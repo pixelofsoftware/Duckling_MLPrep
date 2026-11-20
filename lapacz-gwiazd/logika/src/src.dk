@@ -1,0 +1,152 @@
+#{
+    Łapacz gwiazd: logika gry (model), bez okna i bez klawiatury.
+
+    Zasady (tutorial "Gry 2D w Ducklingu", kroki 2-4):
+    * z góry spadają gwiazdy, strzałkami przesuwamy koszyk,
+    * złapana gwiazda daje punkt, gwiazda na ziemi zabiera życie,
+    * po trzech stratach koniec gry; restart zaczyna od nowa.
+
+    Współrzędne są w pikselach ekranu 800x600, oś Y rośnie w dół. Ruch liczymy jako
+    prędkość razy czas klatki (dt w sekundach), więc gra działa tak samo przy 30
+    i przy 144 klatkach na sekundę. Losowanie ma własny generator z ziarnem, dzięki
+    czemu testy są powtarzalne.
+#}
+
+const SZEROKOSC: i32 = 800;
+const WYSOKOSC: i32 = 600;
+
+const KOSZYK_SZER: f32 = 110.0;
+const KOSZYK_WYS: f32 = 20.0;
+const KOSZYK_Y: f32 = 560.0;
+const KOSZYK_PREDKOSC: f32 = 450.0;   # piksele na sekundę
+
+const PROMIEN: f32 = 14.0;
+const LICZBA_GWIAZD: i64 = 3;
+const ZYCIA_NA_START: i32 = 3;
+
+# Najdłuższy krok czasu. Po przeciągnięciu okna albo zawieszeniu systemu klatka trwa
+# długo i gwiazdy przeskoczyłyby koszyk; dzielimy taki czas na krótsze kroki.
+const MAKS_DT: f32 = 0.05f32;
+
+class Gwiazda {
+    x: f32 = 0.0;
+    y: f32 = 0.0;
+    predkosc: f32 = 0.0;
+}
+
+fun pustaListaGwiazd() -> List[Gwiazda] = {
+    var pusta: List[Gwiazda];
+    return pusta;
+}
+
+class Stan {
+    koszykX: f32 = 400.0;     # środek koszyka
+    punkty: i32 = 0;
+    zycia: i32 = ZYCIA_NA_START;
+    gwiazdy: List[Gwiazda] = pustaListaGwiazd();
+    los: u64 = 1u64;          # stan generatora liczb losowych (nigdy 0)
+}
+
+# Generator xorshift64*: szybki, wystarczający do gry i w pełni powtarzalny.
+fun nastepnaLiczba(stan: ref Stan) -> u64 = {
+    var s: u64 = stan.los;
+    s = s ^ (s >> 12u64);
+    s = s ^ (s << 25u64);
+    s = s ^ (s >> 27u64);
+    stan.los = s;
+    return s * 0x2545f4914f6cdd1du64;
+}
+
+# Losowa liczba całkowita z przedziału [od, doWlacznie], oba końce włącznie.
+fun losuj(stan: ref Stan, od: i32, doWlacznie: i32) -> i32 = {
+    let rozpietosc: u64 = (doWlacznie - od + 1) as u64;
+    let wylosowana: u64 = nastepnaLiczba(stan) % rozpietosc;
+    return od + (wylosowana as i32);
+}
+
+# Nowa gwiazda nad górną krawędzią ekranu (ujemne y), więc gwiazdy spadają w różnych chwilach.
+fun nowaGwiazda(stan: ref Stan) -> Gwiazda = {
+    let gx = losuj(stan, 30, SZEROKOSC - 30) as f32;
+    let gy = losuj(stan, -600, -30) as f32;
+    let gv = losuj(stan, 120, 220) as f32;
+    return Gwiazda(gx, gy, gv);
+}
+
+fun rozstawGwiazdy(stan: ref Stan) -> () = {
+    var nowe: List[Gwiazda];
+    var k: i64 = 0;
+    while (k < LICZBA_GWIAZD) {
+        nowe.push(nowaGwiazda(stan));
+        k += 1;
+    }
+    stan.gwiazdy = move nowe;
+}
+
+# Nowa gra. Ziarno 0 zamieniamy na 1, bo xorshift z zerem stałby w miejscu.
+fun nowaGra(ziarno: u64) -> Stan = {
+    var stan = Stan();
+    if (ziarno == 0u64) stan.los = 1u64;
+    else stan.los = ziarno;
+    rozstawGwiazdy(&stan);
+    return stan;
+}
+
+# Od nowa po końcu gry: zero punktów, pełne życia, nowe gwiazdy, koszyk na środku.
+fun odNowa(stan: ref Stan) -> () = {
+    stan.punkty = 0;
+    stan.zycia = ZYCIA_NA_START;
+    stan.koszykX = (SZEROKOSC / 2) as f32;
+    rozstawGwiazdy(stan);
+}
+
+fun koniecGry(stan: ref Stan) -> bool = stan.zycia <= 0;
+
+# Złapana: gwiazda dotknęła koszyka od góry i jest nad nim w poziomie.
+fun wKoszyku(g: ref Gwiazda, srodekKoszyka: f32) -> bool = {
+    let polowa = KOSZYK_SZER / 2.0;
+    return g.y + PROMIEN >= KOSZYK_Y and g.y < KOSZYK_Y + KOSZYK_WYS
+        and g.x >= srodekKoszyka - polowa and g.x <= srodekKoszyka + polowa;
+}
+
+# Gwiazda cała zniknęła pod dolną krawędzią ekranu.
+fun naZiemi(g: ref Gwiazda) -> bool = g.y > (WYSOKOSC as f32) + PROMIEN;
+
+# Jeden krok gry o czasie dt nie dłuższym niż MAKS_DT.
+fun krokCzastkowy(stan: ref Stan, dt: f32, lewo: bool, prawo: bool) -> () = {
+    # Ruch koszyka: prędkość razy czas, koszyk nie wychodzi poza ekran.
+    if (lewo) stan.koszykX -= KOSZYK_PREDKOSC * dt;
+    if (prawo) stan.koszykX += KOSZYK_PREDKOSC * dt;
+    let minX = KOSZYK_SZER / 2.0;
+    let maxX = (SZEROKOSC as f32) - KOSZYK_SZER / 2.0;
+    if (stan.koszykX < minX) stan.koszykX = minX;
+    if (stan.koszykX > maxX) stan.koszykX = maxX;
+
+    var i: i64 = 0;
+    while (i < stan.gwiazdy.length()) {
+        # Po końcu gry (ostatnie życie stracone w tym kroku) nic się już nie rusza.
+        if (stan.zycia > 0) {
+            stan.gwiazdy.at(i).y += stan.gwiazdy.at(i).predkosc * dt;
+            if (wKoszyku(stan.gwiazdy.at(i), stan.koszykX)) {
+                stan.punkty += 1;
+                stan.gwiazdy.at(i) = nowaGwiazda(stan);
+            } else if (naZiemi(stan.gwiazdy.at(i))) {
+                stan.zycia -= 1;
+                stan.gwiazdy.at(i) = nowaGwiazda(stan);
+            }
+        }
+        i += 1;
+    }
+}
+
+# Aktualizacja stanu o czas klatki. W stanie końca gry nic się nie rusza.
+fun aktualizuj(stan: ref Stan, czasKlatki: f32, lewo: bool, prawo: bool) -> () = {
+    var zostalo: f32 = czasKlatki;
+    if (not (zostalo > 0.0)) zostalo = 0.0;   # także NaN
+    if (zostalo > 1.0) zostalo = 1.0;         # dłuższej przerwy nie nadrabiamy
+    while (zostalo > 0.0 and stan.zycia > 0) {
+        var porcja: f32 = zostalo;
+        if (porcja > MAKS_DT) porcja = MAKS_DT;
+        krokCzastkowy(stan, porcja, lewo, prawo);
+        zostalo -= porcja;
+    }
+}

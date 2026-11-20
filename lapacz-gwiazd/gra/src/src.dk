@@ -1,0 +1,168 @@
+#{
+    Łapacz gwiazd: okno, klawiatura i rysowanie (pakiet grafika).
+
+    Strzałki albo A/D przesuwają koszyk, R zaczyna od nowa po końcu gry,
+    Esc albo zamknięcie okna kończy program. Zasady gry są w pakiecie logika.
+#}
+import grafika;
+import logika;
+import core.builtins as builtins;
+
+extern("C") {
+    fundecl write(fd: i32, data: cptr char, size: u64) -> i64;
+    fundecl getenv(name: cptr char) -> cptr char;
+}
+
+const TLO: u32 = 0x101828ffu32;       # granatowe niebo
+const ZIEMIA: u32 = 0x1d3b2affu32;
+const ZLOTY: u32 = 0xffd23fffu32;
+const KOSZYK: u32 = 0x8b5a2bffu32;
+const KOSZYK_BRZEG: u32 = 0xc68642ffu32;
+
+# Komunikat na standardowe wyjście błędów.
+fun bladNaEkran(tekst: str) -> () = {
+    write(2i32, builtins.ptr_from_slice[char](tekst) as cptr char, tekst.length() as u64);
+}
+
+# Gwiazda: dwa trójkąty (heksagram) i jasny środek, promień jak w logice.
+fun rysujGwiazde(g: ref logika.Gwiazda) -> () = {
+    let r = logika.PROMIEN + 4.0;
+    let cx = g.x;
+    let cy = g.y;
+    grafika.triangle(cx, cy - r, cx - r * 0.875f32, cy + r * 0.5f32, cx + r * 0.875f32, cy + r * 0.5f32, ZLOTY);
+    grafika.triangle(cx, cy + r, cx + r * 0.875f32, cy - r * 0.5f32, cx - r * 0.875f32, cy - r * 0.5f32, ZLOTY);
+    grafika.circle(cx as i32, cy as i32, logika.PROMIEN * 0.5f32, grafika.YELLOW);
+}
+
+fun rysujKoszyk(srodek: f32) -> () = {
+    let lewaKrawedz = (srodek - logika.KOSZYK_SZER / 2.0) as i32;
+    let gora = logika.KOSZYK_Y as i32;
+    let szer = logika.KOSZYK_SZER as i32;
+    let wys = logika.KOSZYK_WYS as i32;
+    grafika.rectangle(lewaKrawedz, gora, szer, wys, KOSZYK);
+    grafika.rectangleLines(lewaKrawedz, gora, szer, wys, 2.0, KOSZYK_BRZEG);
+}
+
+fun rysujSerca(zycia: i32) -> () = {
+    var n: i32 = 0;
+    while (n < logika.ZYCIA_NA_START) {
+        let sx = 760 - n * 30;
+        if (n < zycia) grafika.circle(sx, 32, 10.0, grafika.RED);
+        else grafika.circleLines(sx, 32, 10.0, grafika.DARKGRAY);
+        n += 1;
+    }
+}
+
+# Tekst (ASCII) wyśrodkowany w poziomie.
+fun napisNaSrodku(tekst: str, y: i32, rozmiar: i32, kolor: u32) -> () = {
+    let pomiar = grafika.textDefaultWidth(tekst, rozmiar);
+    var lewy: i32 = 0;
+    if (pomiar._1 == grafika.OK) lewy = (logika.SZEROKOSC - pomiar._2) / 2;
+    grafika.textDefault(tekst, lewy, y, rozmiar, kolor);
+}
+
+# Cała scena; wywołuj między frameBegin i frameEnd.
+fun rysujScene(stan: ref logika.Stan) -> () = {
+    grafika.rectangle(0, logika.KOSZYK_Y as i32 + logika.KOSZYK_WYS as i32, logika.SZEROKOSC,
+        logika.WYSOKOSC - (logika.KOSZYK_Y as i32 + logika.KOSZYK_WYS as i32), ZIEMIA);
+    var i: i64 = 0;
+    while (i < stan.gwiazdy.length()) {
+        rysujGwiazde(stan.gwiazdy.at(i));
+        i += 1;
+    }
+    rysujKoszyk(stan.koszykX);
+    grafika.textDefault(f"Punkty: {stan.punkty}".asSlice(), 20, 20, 24, grafika.WHITE);
+    grafika.textDefault("Zycia:", 590, 22, 20, grafika.WHITE);
+    rysujSerca(stan.zycia);
+    if (logika.koniecGry(stan)) {
+        grafika.rectangle(0, 0, logika.SZEROKOSC, logika.WYSOKOSC, 0x000000a0u32);
+        napisNaSrodku("KONIEC GRY", 220, 52, grafika.RED);
+        let wynik = f"Wynik: {stan.punkty}";
+        napisNaSrodku(wynik.asSlice(), 290, 28, grafika.WHITE);
+        napisNaSrodku("R - jeszcze raz, Esc - wyjscie", 340, 24, grafika.WHITE);
+    }
+}
+
+fun rysuj(stan: ref logika.Stan) -> () = {
+    grafika.frameBegin(TLO);
+    rysujScene(stan);
+    grafika.frameEnd();
+}
+
+# Klatka zapisana do pliku PNG (frameSave działa tylko w trakcie klatki).
+fun zapiszKlatke(stan: ref logika.Stan, sciezka: str) -> i32 = {
+    grafika.frameBegin(TLO);
+    rysujScene(stan);
+    let zapis = grafika.frameSave(sciezka);
+    grafika.frameEnd();
+    return zapis;
+}
+
+#{
+    Tryb zrzutów do README: LAPACZ_ZRZUTY=1 ./lapacz zapisuje dwa ustalone stany gry
+    (rozgrywka i koniec gry) do katalogu zrzuty/ w bieżącym katalogu i kończy program.
+#}
+fun zrzutyWlaczone() -> bool = {
+    let wartosc: cptr char = getenv(builtins.ptr_from_slice[char]("LAPACZ_ZRZUTY\0") as cptr char);
+    return wartosc as u64 != 0u64;
+}
+
+fun zapiszZrzuty() -> i32 = {
+    var gra = logika.nowaGra(2026u64);
+    gra.gwiazdy.at(0) = logika.Gwiazda(170.0, 150.0, 150.0);
+    gra.gwiazdy.at(1) = logika.Gwiazda(610.0, 330.0, 200.0);
+    gra.gwiazdy.at(2) = logika.Gwiazda(430.0, 505.0, 180.0);
+    gra.koszykX = 410.0;
+    gra.punkty = 7;
+    gra.zycia = 2;
+    var bledy: i32 = 0;
+    if (zapiszKlatke(&gra, "zrzuty/gra.png") != grafika.OK) bledy += 1;
+    var koniec = logika.nowaGra(7u64);
+    logika.aktualizuj(&koniec, 1.0, true, false);
+    koniec.punkty = 12;
+    koniec.zycia = 0;
+    if (zapiszKlatke(&koniec, "zrzuty/koniec.png") != grafika.OK) bledy += 1;
+    return bledy;
+}
+
+fun main() = {
+    if (grafika.windowOpen(logika.SZEROKOSC, logika.WYSOKOSC, "Łapacz gwiazd") != grafika.OK) {
+        bladNaEkran("Lapacz gwiazd: nie mozna otworzyc okna (brak ekranu albo raylib).\n");
+        return 1;
+    }
+    grafika.setTargetFps(60);
+    if (zrzutyWlaczone()) {
+        let nieZapisane = zapiszZrzuty();
+        grafika.windowClose();
+        if (nieZapisane != 0) {
+            bladNaEkran("Lapacz gwiazd: nie zapisano zrzutow (czy istnieje katalog zrzuty/?).\n");
+            return 1;
+        }
+        return 0;
+    }
+
+    # raylib losuje ziarno z zegara przy starcie, więc każda gra jest inna.
+    var stan = logika.nowaGra(grafika.random(1, 2147483646) as u64);
+    var input = grafika.InputState();
+
+    while (not input.closeRequested and not grafika.keyPressed(grafika.KEY_ESCAPE)) {
+        # 1. wejście
+        grafika.inputPoll(&input);
+        let dt = grafika.frameTime();
+
+        # 2. zmiana stanu gry
+        if (not logika.koniecGry(&stan)) {
+            let lewo = grafika.keyDown(grafika.KEY_LEFT) or grafika.keyDown(grafika.KEY_A);
+            let prawo = grafika.keyDown(grafika.KEY_RIGHT) or grafika.keyDown(grafika.KEY_D);
+            logika.aktualizuj(&stan, dt, lewo, prawo);
+        } else if (grafika.keyPressed(grafika.KEY_R)) {
+            logika.odNowa(&stan);
+        }
+
+        # 3. rysowanie
+        rysuj(&stan);
+    }
+
+    grafika.windowClose();
+    return 0;
+}

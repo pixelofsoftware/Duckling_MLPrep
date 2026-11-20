@@ -1,0 +1,5 @@
+metadata:
+  name: logika
+  version: '1.0.0'
+  license: MIT
+  description: Zasady gry Łapacz gwiazd, bez okna; używane przez gre i testy

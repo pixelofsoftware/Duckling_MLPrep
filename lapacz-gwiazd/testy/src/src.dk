@@ -1,0 +1,175 @@
+#{
+    Testy logiki gry Łapacz gwiazd. Działają bez okna: `duck run` w katalogu testy/.
+    Kod wyjścia to liczba nieudanych sprawdzeń (0 = wszystko w porządku).
+#}
+import logika;
+
+var nieudane: i32 = 0;
+var wszystkie: i32 = 0;
+
+fun sprawdz(warunek: bool, opis: str) -> () = {
+    wszystkie += 1;
+    if (warunek) {
+        print(f"  OK    {opis}\n".asSlice());
+    } else {
+        nieudane += 1;
+        print(f"  BLAD  {opis}\n".asSlice());
+    }
+}
+
+fun blisko(a: f32, b: f32) -> bool = {
+    let roznica = a - b;
+    return roznica < 0.01f32 and roznica > -0.01f32;
+}
+
+# Stan z jedną gwiazdą w podanym miejscu, żeby sprawdzić konkretną sytuację.
+fun stanZJednaGwiazda(gx: f32, gy: f32, gv: f32) -> logika.Stan = {
+    var s = logika.nowaGra(7u64);
+    var jedna: List[logika.Gwiazda];
+    jedna.push(logika.Gwiazda(gx, gy, gv));
+    s.gwiazdy = move jedna;
+    return s;
+}
+
+fun testStartu() -> () = {
+    print("Start gry\n");
+    var s = logika.nowaGra(12345u64);
+    sprawdz(s.zycia == 3 and s.punkty == 0, "3 zycia i 0 punktow na starcie");
+    sprawdz(s.gwiazdy.length() == logika.LICZBA_GWIAZD, "tyle gwiazd, ile LICZBA_GWIAZD");
+    var dobre = true;
+    var i: i64 = 0;
+    while (i < s.gwiazdy.length()) {
+        let g = s.gwiazdy.at(i);
+        if (g.y >= 0.0 or g.y < -600.0) dobre = false;
+        if (g.x < 30.0 or g.x > 770.0) dobre = false;
+        if (g.predkosc < 120.0 or g.predkosc > 220.0) dobre = false;
+        i += 1;
+    }
+    sprawdz(dobre, "gwiazdy startuja nad ekranem, x w 30..770, predkosc 120..220");
+    sprawdz(blisko(s.koszykX, 400.0), "koszyk na srodku");
+}
+
+fun testLosowania() -> () = {
+    print("Losowanie\n");
+    var a = logika.nowaGra(99u64);
+    var b = logika.nowaGra(99u64);
+    var c = logika.nowaGra(100u64);
+    sprawdz(blisko(a.gwiazdy.at(0).x, b.gwiazdy.at(0).x) and blisko(a.gwiazdy.at(2).y, b.gwiazdy.at(2).y),
+        "to samo ziarno daje te same gwiazdy");
+    sprawdz(not blisko(a.gwiazdy.at(0).x, c.gwiazdy.at(0).x) or not blisko(a.gwiazdy.at(0).y, c.gwiazdy.at(0).y),
+        "inne ziarno daje inne gwiazdy");
+    var z = logika.nowaGra(0u64);
+    sprawdz(z.los != 0u64, "ziarno 0 nie psuje generatora");
+    # 20000 losowań z [0, 9]: wszystkie w przedziale i trafiają oba końce.
+    var poza = false;
+    var minimum: i32 = 1000;
+    var maksimum: i32 = -1000;
+    var n: i32 = 0;
+    while (n < 20000) {
+        let v = logika.losuj(&z, 0, 9);
+        if (v < 0 or v > 9) poza = true;
+        if (v < minimum) minimum = v;
+        if (v > maksimum) maksimum = v;
+        n += 1;
+    }
+    sprawdz(not poza and minimum == 0 and maksimum == 9, "losuj daje liczby z przedzialu, oba konce wlacznie");
+}
+
+fun testKoszyka() -> () = {
+    print("Ruch koszyka\n");
+    var s = stanZJednaGwiazda(100.0, -500.0, 0.0);
+    logika.aktualizuj(&s, 0.1f32, false, true);
+    sprawdz(blisko(s.koszykX, 445.0), "w prawo: 450 px/s * 0.1 s = 45 px");
+    logika.aktualizuj(&s, 0.2f32, true, false);
+    sprawdz(blisko(s.koszykX, 355.0), "w lewo: 450 px/s * 0.2 s = 90 px");
+    logika.aktualizuj(&s, 0.1f32, true, true);
+    sprawdz(blisko(s.koszykX, 355.0), "oba klawisze naraz: koszyk stoi");
+    logika.aktualizuj(&s, 1.0, false, false);
+    sprawdz(blisko(s.koszykX, 355.0), "bez klawiszy: koszyk stoi");
+    var k: i32 = 0;
+    while (k < 10) { logika.aktualizuj(&s, 1.0, false, true); k += 1; }
+    sprawdz(blisko(s.koszykX, 745.0), "koszyk nie wychodzi za prawa krawedz (800 - 55)");
+    k = 0;
+    while (k < 10) { logika.aktualizuj(&s, 1.0, true, false); k += 1; }
+    sprawdz(blisko(s.koszykX, 55.0), "koszyk nie wychodzi za lewa krawedz (55)");
+}
+
+fun testLapania() -> () = {
+    print("Lapanie i tracenie gwiazd\n");
+    var s = stanZJednaGwiazda(400.0, 540.0, 200.0);
+    logika.aktualizuj(&s, 0.05f32, false, false);   # y = 550, 550 + 14 >= 560
+    sprawdz(s.punkty == 1 and s.zycia == 3, "gwiazda nad koszykiem: +1 punkt");
+    sprawdz(s.gwiazdy.length() == 1 and s.gwiazdy.at(0).y < 0.0, "zlapana gwiazda wraca nad ekran");
+
+    var brzeg = stanZJednaGwiazda(455.0, 540.0, 200.0);
+    logika.aktualizuj(&brzeg, 0.05f32, false, false);
+    sprawdz(brzeg.punkty == 1, "gwiazda dokladnie na brzegu koszyka (x = 400 + 55) jest zlapana");
+
+    var obok = stanZJednaGwiazda(456.0, 540.0, 200.0);
+    logika.aktualizuj(&obok, 0.05f32, false, false);
+    sprawdz(obok.punkty == 0 and obok.zycia == 3, "gwiazda obok koszyka nie jest zlapana i jeszcze leci");
+
+    var spada = stanZJednaGwiazda(100.0, 610.0, 200.0);
+    logika.aktualizuj(&spada, 0.05f32, false, false);   # y = 620 > 600 + 14
+    sprawdz(spada.zycia == 2 and spada.punkty == 0, "gwiazda na ziemi: -1 zycie");
+    sprawdz(spada.gwiazdy.at(0).y < 0.0, "stracona gwiazda wraca nad ekran");
+
+    # Bardzo długa klatka nie pozwala gwieździe przeskoczyć koszyka.
+    var skok = stanZJednaGwiazda(400.0, 500.0, 220.0);
+    logika.aktualizuj(&skok, 0.5f32, false, false);
+    sprawdz(skok.punkty == 1, "dluga klatka (0.5 s) nie przeskakuje koszyka");
+}
+
+fun testKoncaGry() -> () = {
+    print("Koniec gry i restart\n");
+    var s = stanZJednaGwiazda(100.0, 610.0, 200.0);
+    var proby: i32 = 0;
+    while (not logika.koniecGry(&s) and proby < 1000) {
+        s.gwiazdy.at(0).x = 100.0;
+        s.gwiazdy.at(0).y = 610.0;
+        s.gwiazdy.at(0).predkosc = 200.0;
+        s.koszykX = 700.0;
+        logika.aktualizuj(&s, 0.05f32, false, false);
+        proby += 1;
+    }
+    sprawdz(proby == 3 and s.zycia == 0, "po trzech stratach koniec gry");
+    let zapamietanyX = s.koszykX;
+    let zapamietaneY = s.gwiazdy.at(0).y;
+    logika.aktualizuj(&s, 0.5f32, true, false);
+    sprawdz(blisko(s.koszykX, zapamietanyX) and blisko(s.gwiazdy.at(0).y, zapamietaneY),
+        "po koncu gry nic sie nie rusza");
+    s.punkty = 5;
+    logika.odNowa(&s);
+    sprawdz(s.zycia == 3 and s.punkty == 0 and blisko(s.koszykX, 400.0), "restart: 3 zycia, 0 punktow, koszyk na srodku");
+    sprawdz(s.gwiazdy.length() == logika.LICZBA_GWIAZD and not logika.koniecGry(&s), "restart: nowe gwiazdy, gramy dalej");
+}
+
+fun testNiezaleznosciOdKlatek() -> () = {
+    print("Szybkosc niezalezna od liczby klatek\n");
+    var wolno = logika.nowaGra(5u64);
+    var szybko = logika.nowaGra(5u64);
+    var k: i32 = 0;
+    while (k < 30) { logika.aktualizuj(&wolno, 1.0f32 / 30.0f32, false, true); k += 1; }
+    k = 0;
+    while (k < 144) { logika.aktualizuj(&szybko, 1.0f32 / 144.0f32, false, true); k += 1; }
+    let dx = wolno.koszykX - szybko.koszykX;
+    let dy = wolno.gwiazdy.at(0).y - szybko.gwiazdy.at(0).y;
+    sprawdz(dx < 0.1f32 and dx > -0.1f32, "koszyk po 1 s: 30 fps i 144 fps w tym samym miejscu");
+    sprawdz(dy < 0.1f32 and dy > -0.1f32, "gwiazda po 1 s: 30 fps i 144 fps w tym samym miejscu");
+    var zle = logika.nowaGra(5u64);
+    let przedY = zle.gwiazdy.at(0).y;
+    logika.aktualizuj(&zle, -1.0, false, true);
+    sprawdz(blisko(zle.gwiazdy.at(0).y, przedY) and blisko(zle.koszykX, 400.0), "ujemny czas klatki jest ignorowany");
+}
+
+fun main() -> i64 = {
+    print("Testy logiki: Lapacz gwiazd\n");
+    testStartu();
+    testLosowania();
+    testKoszyka();
+    testLapania();
+    testKoncaGry();
+    testNiezaleznosciOdKlatek();
+    print(f"Wynik: {wszystkie - nieudane}/{wszystkie} sprawdzen udanych\n".asSlice());
+    return nieudane as i64;
+}
