@@ -1,0 +1,4 @@
+zewnetrzne/
+.duck_build/
+*/.duck_build/
+.DS_Store

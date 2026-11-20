@@ -1,0 +1,12 @@
+metadata:
+  name: lapacz
+  version: '1.0.0'
+  license: MIT
+  description: Łapacz gwiazd - gra 2D w Ducklingu (tutorial "Gry 2D w Ducklingu")
+dependencies:
+  logika:
+    source:
+      path: '../logika'
+  grafika:
+    source:
+      path: '../zewnetrzne/grafika'
