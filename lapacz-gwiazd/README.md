@@ -20,18 +20,29 @@ Z góry spadają gwiazdy, a Ty przesuwasz koszyk. Złapana gwiazda daje punkt, g
 ## Uruchomienie (macOS)
 
 ```sh
-./uruchom.sh          # pierwszy raz przygotowuje raylib i pakiet grafika (~1 min), potem buduje i uruchamia grę
+./uruchom.sh          # buduje i uruchamia grę
 ./uruchom.sh testy    # testy logiki, bez okna
 ```
 
 Wymagania:
 * Duckling z `duck` w PATH (sprawdzone na `duckc 0.3-alpha (83882805a 2026-11-20)`, macOS 27.2, Apple Silicon);
 * Xcode Command Line Tools (git, make, clang);
-* repozytorium [duckling-biblioteki](https://github.com/andr729/duckling-biblioteki), gałąź `paczki-duck`, domyślnie w `~/duckling-biblioteki` (inna ścieżka: `./przygotuj_macos.sh /ścieżka`).
+* nic więcej: pakiet `grafika` oraz raylib dla macOS (Apple Silicon) są w katalogu `zewnetrzne/` (opis: [zewnetrzne/README.md](zewnetrzne/README.md)), więc nie trzeba pobierać duckling-biblioteki ani budować raylib;
 
-Ręcznie: `./przygotuj_macos.sh`, potem `cd gra && duck run`.
+Ręcznie: `cd gra && duck run`.
 
 `duck` trzyma jedno środowisko (venv) na nazwę pakietu. Druga kopia projektu na tym samym komputerze kończy się błędem „would overwrite the venv”: zmień w niej `name` w `quackconfig.yaml` albo dodaj `--overwrite`.
+
+## Uruchomienie (Linux)
+
+```sh
+sudo apt install build-essential git cmake libx11-dev libxrandr-dev libxinerama-dev \
+    libxcursor-dev libxi-dev libgl-dev libasound2-dev
+./uruchom.sh          # za pierwszym razem uruchamia ./przygotuj_linux.sh: wersje pakietów dla Linuksa i raylib
+./uruchom.sh testy    # testy logiki, bez okna
+```
+
+Potrzebny jest też Duckling z `duck` w PATH. `przygotuj_linux.sh` kopiuje wersje pakietów z `zewnetrzne/linux/` do `zewnetrzne/` (pliki z repozytorium dostają w git znacznik `skip-worktree`, więc `git status` pozostaje czysty) i buduje statyczną raylib 5.5 skryptem pakietu `grafika`. **Kroki dla Linuksa nie zostały sprawdzone na prawdziwej maszynie z Linuksem.**
 
 ## Struktura
 
@@ -40,7 +51,9 @@ logika/   pakiet logika: zasady gry (model), bez okna; generator liczb losowych 
 gra/      pakiet lapacz: okno, klawiatura, rysowanie (grafika) i pętla gry
 testy/    pakiet testy_lapacza: 28 sprawdzeń logiki, kod wyjścia = liczba błędów
 zrzuty/   obrazy do README, tworzone przez grę: LAPACZ_ZRZUTY=1 gra/.duck_build/dev/lapacz
-przygotuj_macos.sh   raylib 5.5 i kopia pakietu grafika dla macOS do zewnetrzne/ (poza gitem)
+zewnetrzne/          pakiet grafika (wersje dla macOS i Linuksa) oraz raylib dla macOS; opis w zewnetrzne/README.md
+przygotuj_macos.sh   buduje raylib, gdy brakuje jej dla procesora Maca (np. Intel)
+przygotuj_linux.sh   przygotowanie na Linuksie: wersje pakietów z zewnetrzne/linux/ i raylib
 ```
 
 Logika jest oddzielona od okna, tak jak radzą materiały DuckQuest. Dzięki temu da się ją sprawdzić testami bez ekranu, a pętla w `gra/` ma tylko trzy części: wejście, zmiana stanu i rysowanie.
@@ -64,7 +77,7 @@ Dodatki, które nie zmieniają zasad gry:
 
 ## Uwagi o macOS
 
-Pakiet `grafika` z duckling-biblioteki jest przygotowany dla Linuksa. `przygotuj_macos.sh` robi z niego wersję dla macOS i nie zmienia przy tym oryginału:
+Pakiet `grafika` z duckling-biblioteki jest przygotowany dla Linuksa. Wersja dla macOS w `zewnetrzne/` różni się od oryginału tylko tym:
 
 * **raylib 5.5 jako `libraylib.dylib`.** Biblioteka współdzielona sama dołącza frameworki macOS, a `duck` przyjmuje tylko nazwy bibliotek (`external-libs`), bez flag `-framework`. Homebrew ma już raylib 6.x, a pakiet `grafika` opisuje struktury z 5.5, dlatego skrypt buduje 5.5 ze źródeł (ten sam commit co `grafika/zbuduj_raylib.py`).
 * **`__errno_location` → `__error`.** Tak nazywa się ta funkcja na macOS.
@@ -74,4 +87,4 @@ Przy pisaniu gry znalazła się pułapka spoza listy `PULAPKI-DUCKLINGA.md`: **`
 
 ## Licencja
 
-MIT. Kopia pakietu `grafika` w `zewnetrzne/` pochodzi z duckling-biblioteki (MIT), a raylib ma licencję zlib.
+MIT. Kopia pakietu `grafika` w `zewnetrzne/` pochodzi z duckling-biblioteki (MIT, Paweł Kępczyński; szczegóły w `zewnetrzne/README.md`), a raylib ma licencję zlib.
