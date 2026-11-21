@@ -1,5 +1,7 @@
 # Łapacz gwiazd
 
+![Napisane w Duckling](https://img.shields.io/badge/napisane%20w-Duckling-f2c94c)
+
 Gra 2D w Ducklingu według tutorialu **„Gry 2D w Ducklingu: pakiety grafika i fizyka, od okna do pierwszej gry”** (kroki 1–4).
 Z góry spadają gwiazdy, a Ty przesuwasz koszyk. Złapana gwiazda daje punkt, gwiazda na ziemi zabiera życie. Po trzech stratach gra się kończy, a R zaczyna od nowa.
 
